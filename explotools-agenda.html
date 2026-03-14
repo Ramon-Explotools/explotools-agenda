@@ -967,15 +967,21 @@ function loadGoogleAPIs() {
   s1.src = 'https://apis.google.com/js/api.js';
   s1.onload = function() {
     gapi.load('client', function() {
+      // Load Calendar API via discoveryDocs
       gapi.client.init({
-        discoveryDocs: [
-          'https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest',
-          'https://www.googleapis.com/discovery/v1/apis/tasks/v1/rest'
-        ]
+        discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest']
+      }).then(function() {
+        // Load Tasks API separately via gapi.client.load
+        return gapi.client.load('tasks', 'v1');
       }).then(function() {
         gapiReady = true;
         if (gisReady) initGIS();
-      }).catch(function() { gapiReady = true; if (gisReady) initGIS(); });
+      }).catch(function(e) {
+        console.warn('API init error, trying without Tasks:', e);
+        // Fallback: mark ready even if Tasks fails
+        gapiReady = true;
+        if (gisReady) initGIS();
+      });
     });
   };
   document.body.appendChild(s1);
@@ -1152,16 +1158,27 @@ function deleteFromGcal(gcalId, onDone) {
 
 function syncTasksFromGoogle() {
   if (!state.gcal.connected || !gapiReady) return;
-  if (!gapi.client.tasks) { console.warn('Tasks API not ready'); return; }
 
-  // Status map: Google Tasks needsAction → todo, completed → done
+  // Try to load Tasks API if not loaded yet
+  if (!gapi.client.tasks) {
+    gapi.client.load('tasks', 'v1').then(function() {
+      syncTasksFromGoogle(); // retry after loading
+    }).catch(function(e) {
+      showToast('Google Tarefas API indisponível.', 'error');
+      console.warn('Tasks API load failed:', e);
+    });
+    return;
+  }
+
   var statusMap = { needsAction: 'todo', completed: 'done' };
 
-  // First get all task lists
   gapi.client.tasks.tasklists.list({ maxResults: 20 })
     .then(function(r) {
       var lists = r.result.items || [];
-      if (!lists.length) return;
+      if (!lists.length) {
+        showToast('Nenhuma lista de tarefas encontrada.', 'success');
+        return;
+      }
 
       var allPromises = lists.map(function(list) {
         return gapi.client.tasks.tasks.list({
@@ -1171,6 +1188,8 @@ function syncTasksFromGoogle() {
           maxResults: 100
         }).then(function(res) {
           return { listName: list.title, items: res.result.items || [] };
+        }).catch(function() {
+          return { listName: list.title, items: [] };
         });
       });
 
@@ -1178,35 +1197,32 @@ function syncTasksFromGoogle() {
         var added = 0, updated = 0;
         results.forEach(function(result) {
           result.items.forEach(function(gt) {
-            // Use a stable ID based on Google Task ID
-            var gtaskId = 'gtask_' + gt.id;
+            if (!gt.title || !gt.title.trim()) return; // skip empty tasks
             var existing = state.tasks.find(function(t) { return t.gcalTaskId === gt.id; });
             var status = statusMap[gt.status] || 'todo';
-            // Parse due date — Google Tasks due is date-only (no time)
             var dateStr = '';
             if (gt.due) {
-              var d = new Date(gt.due);
-              // Keep as date-only (no T time part) since Google Tasks has no time
-              dateStr = d.getFullYear() + '-' +
-                String(d.getMonth()+1).padStart(2,'0') + '-' +
-                String(d.getDate()).padStart(2,'0');
+              try {
+                var d = new Date(gt.due);
+                dateStr = d.getFullYear() + '-' +
+                  String(d.getMonth()+1).padStart(2,'0') + '-' +
+                  String(d.getDate()).padStart(2,'0');
+              } catch(e) {}
             }
-            var title = gt.title || '(sem título)';
+            var title = gt.title.trim();
             var notes = gt.notes || '';
 
             if (existing) {
-              // Update if changed
               var changed = false;
               if (existing.title !== title) { existing.title = title; changed = true; }
               if (existing.status !== status) { existing.status = status; changed = true; }
               if (dateStr && existing.date !== dateStr) { existing.date = dateStr; changed = true; }
               if (changed) updated++;
             } else {
-              // Import new task
               state.tasks.push({
-                id: gtaskId,
-                gcalTaskId: gt.id,      // Google Task ID for future updates
-                gcalId: null,           // not a calendar event
+                id: 'gtask_' + gt.id,
+                gcalTaskId: gt.id,
+                gcalId: null,
                 title: title,
                 desc: notes,
                 sector: '', project: '',
@@ -1214,7 +1230,7 @@ function syncTasksFromGoogle() {
                 date: dateStr,
                 recur: '', recurEnd: '',
                 createdAt: new Date().toISOString(),
-                _sourceList: result.listName  // store list name for reference
+                _sourceList: result.listName
               });
               added++;
             }
@@ -1224,8 +1240,8 @@ function syncTasksFromGoogle() {
         if (added > 0 || updated > 0) {
           saveState(); renderAll();
           var msg = [];
-          if (added)   msg.push(added   + ' tarefa' + (added>1?'s':'') + ' importada' + (added>1?'s':''));
-          if (updated) msg.push(updated + ' tarefa' + (updated>1?'s':'') + ' atualizada' + (updated>1?'s':''));
+          if (added)   msg.push(added   + ' tarefa' + (added>1?'s':'')   + ' importada'   + (added>1?'s':''));
+          if (updated) msg.push(updated + ' tarefa' + (updated>1?'s':'') + ' atualizada'  + (updated>1?'s':''));
           showToast(msg.join(', ') + ' do Google Tarefas ✓', 'success');
         } else {
           showToast('Tarefas Google já sincronizadas ✓', 'success');
@@ -1233,8 +1249,9 @@ function syncTasksFromGoogle() {
       });
     })
     .catch(function(e) {
-      console.warn('Erro ao sincronizar tarefas Google:', e);
-      showToast('Erro ao importar tarefas Google.', 'error');
+      console.error('syncTasksFromGoogle error:', e);
+      var msg = (e && e.result && e.result.error && e.result.error.message) || (e && e.message) || 'Erro desconhecido';
+      showToast('Erro ao importar tarefas: ' + msg, 'error');
     });
 }
 
