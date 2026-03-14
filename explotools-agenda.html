@@ -237,7 +237,8 @@ header::after{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;ba
 .cal-num{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text3);width:22px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:3px;margin-bottom:4px;}
 .cal-day.today .cal-num{background:var(--red);color:#fff;font-weight:700;}
 .cal-day.other{opacity:.25;}
-.cal-ev{font-size:10px;padding:3px 7px 3px 6px;border-radius:3px;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;display:flex;align-items:center;gap:5px;position:relative;}
+.cal-ev{font-size:10px;padding:3px 7px 3px 6px;border-radius:3px;margin-bottom:3px;overflow:hidden;cursor:pointer;display:flex;align-items:center;gap:4px;position:relative;}
+.cal-ev-time{font-family:'JetBrains Mono',monospace;font-size:9px;opacity:.8;flex-shrink:0;font-weight:600;}
 .cal-ev-title{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .cal-ev-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;opacity:.85;}
 .cal-daily-task{background:var(--surface);border:1px solid var(--border);border-left:3px solid transparent;border-radius:5px;padding:12px 14px;margin-bottom:8px;cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:12px;position:relative;}
@@ -1748,7 +1749,9 @@ function renderCalendarMonthly(d) {
       var sec = state.sectors.find(function(s){return s.id===t.sector;});
       var secColor = sec ? sec.color : null;
       var isOverdue = t.date && new Date(t.date) < new Date() && t.status !== 'done';
+      var timeStr = (t.date && t.date.includes('T')) ? t.date.slice(11,16) : '';
       return '<div class="cal-ev" style="background:'+sc+'18;color:'+sc+';border-left:2px solid '+sc+'" data-id="'+t.id+'">' +
+        (timeStr ? '<span class="cal-ev-time">'+timeStr+'</span>' : '') +
         '<span class="cal-ev-title">'+esc(t.title)+'</span>' +
         (secColor ? '<span class="cal-ev-dot" style="background:'+secColor+'"></span>' : '') +
         (isOverdue ? '<span class="cal-ev-overdue" title="Atrasada">!</span>' : '') +
@@ -1812,7 +1815,10 @@ function renderCalendarWeekly(d) {
       ev.style.marginBottom = '4px';
       ev.dataset.id = t.id;
       var isOverdueW = t.date && new Date(t.date) < new Date() && t.status !== 'done';
-      ev.innerHTML = '<span class="cal-ev-title">'+esc(t.title)+'</span>' +
+      var timeStrW = (t.date && t.date.includes('T')) ? t.date.slice(11,16) : '';
+      ev.innerHTML =
+        (timeStrW ? '<span class="cal-ev-time">'+timeStrW+'</span>' : '') +
+        '<span class="cal-ev-title">'+esc(t.title)+'</span>' +
         (sec ? '<span class="cal-ev-dot" style="background:'+sec.color+'"></span>' : '') +
         (isOverdueW ? '<span class="cal-ev-overdue" title="Atrasada">!</span>' : '');
       ev.onclick = function(e) { e.stopPropagation(); openEditTask(t.id); };
