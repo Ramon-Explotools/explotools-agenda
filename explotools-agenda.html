@@ -951,11 +951,14 @@ function initGIS() {
   if (state.gcal.token && state.gcal.tokenExpiry && Date.now() < state.gcal.tokenExpiry) {
     gapi.client.setToken({ access_token: state.gcal.token });
   } else if (state.gcal.token) {
-    // Token expired — clear it
     state.gcal.token = null;
     state.gcal.connected = false;
     state.gcal.tokenExpiry = null;
     saveState(); updateGcalBadge();
+  }
+  // Auto-update button if settings modal is open
+  if (document.getElementById('settingsModal') && document.getElementById('settingsModal').classList.contains('open')) {
+    renderGcalArea();
   }
 }
 
@@ -2327,7 +2330,7 @@ function renderGcalArea() {
       '</div>';
     return;
   }
-  var apisReady = (typeof tokenClient !== 'undefined' && tokenClient);
+  var apisReady = !!tokenClient;
   area.innerHTML =
     '<div class="gcal-guide">' +
       '<p>Para sincronização bidirecional, configure um <strong>Client ID</strong> OAuth no Google Cloud:</p>' +
@@ -2339,20 +2342,10 @@ function renderGcalArea() {
     '<div class="form-g" style="margin-top:14px"><label>Client ID</label>' +
       '<input type="text" id="gcalInput" placeholder="xxxx.apps.googleusercontent.com" value="' + esc(state.gcal.clientId) + '">' +
     '</div>' +
-    '<button class="btn btn-primary" id="gcalConnectBtn" onclick="saveAndConnect()" style="margin-top:8px">' +
-      (apisReady ? 'Conectar com Google' : '⏳ Aguardando APIs...') +
+    '<button class="btn btn-primary" id="gcalConnectBtn" onclick="saveAndConnect()" style="margin-top:8px;opacity:' + (apisReady ? '1' : '0.5') + ';pointer-events:' + (apisReady ? 'auto' : 'none') + '">' +
+      (apisReady ? '▶ Conectar com Google' : '⏳ Carregando APIs...') +
     '</button>' +
-    (!apisReady ? '<div style="font-family:JetBrains Mono,monospace;font-size:10px;color:var(--text3);margin-top:6px;">As APIs do Google estão carregando. O botão será liberado em instantes.</div>' : '');
-
-  // If APIs not ready yet, poll and re-render when ready
-  if (!apisReady) {
-    var poll = setInterval(function() {
-      if (typeof tokenClient !== 'undefined' && tokenClient) {
-        clearInterval(poll);
-        renderGcalArea(); // re-render with button enabled
-      }
-    }, 300);
-  }
+    (!apisReady ? '<div style="font-family:JetBrains Mono,monospace;font-size:10px;color:var(--text3);margin-top:6px;">Aguarde, reabra Config em 3 segundos.</div>' : '');
 }
 
 function saveAndConnect() {
