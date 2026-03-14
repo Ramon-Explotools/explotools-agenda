@@ -864,7 +864,7 @@ var state = {
     { id: 'mkt', name: 'Marketing / Comercial', color: '#f59e0b' },
     { id: 'pes', name: 'Pessoal / Particular',  color: '#a855f7' }
   ],
-  gcal: { clientId: '37409057734-2pbe7fvrbhh127l1t0kfsf1sb4qo8r3h.apps.googleusercontent.com', connected: false, token: null },
+  gcal: { clientId: '37409057734-2pbe7fvrbhh127l1t0kfsf1sb4qo8r3h.apps.googleusercontent.com', connected: false, token: null, tokenExpiry: null },
   filters: { status: 'all', sector: null, project: null, overdue: false, dateRange: null },
   view: 'kanban',
   editId: null,
@@ -885,9 +885,10 @@ function loadState() {
         if (Array.isArray(p.sectors) && p.sectors.length > 0) state.sectors = p.sectors;
         if (p.gcal && typeof p.gcal === 'object') {
           state.gcal = {
-            clientId:  p.gcal.clientId  || '',
-            connected: !!p.gcal.connected,
-            token:     p.gcal.token     || null
+            clientId:    p.gcal.clientId    || '',
+            connected:   !!p.gcal.connected,
+            token:       p.gcal.token       || null,
+            tokenExpiry: p.gcal.tokenExpiry || null
           };
         }
         if (p.calSubView) state.calSubView = p.calSubView;
@@ -916,7 +917,7 @@ function loadGoogleAPIs() {
       gapi.client.init({ discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest'] }).then(function() {
         gapiReady = true;
         if (gisReady) initGIS();
-      });
+      }).catch(function() { gapiReady = true; if (gisReady) initGIS(); });
     });
   };
   document.body.appendChild(s1);
@@ -931,26 +932,53 @@ function initGIS() {
     client_id: state.gcal.clientId,
     scope: 'https://www.googleapis.com/auth/calendar',
     callback: function(r) {
-      if (r.error) { showToast('Erro: ' + r.error, 'error'); return; }
+      if (r.error) {
+        showToast('Erro OAuth: ' + r.error, 'error');
+        state.gcal.connected = false; state.gcal.token = null;
+        saveState(); updateGcalBadge(); renderGcalArea();
+        return;
+      }
       state.gcal.connected = true;
       state.gcal.token = r.access_token;
+      state.gcal.tokenExpiry = Date.now() + 3500 * 1000; // ~58 min
       saveState(); updateGcalBadge();
+      if (typeof renderGcalArea === 'function') renderGcalArea();
       showToast('Google Agenda conectado!', 'success');
       syncFromGcal();
     }
   });
-  if (state.gcal.token) gapi.client.setToken({ access_token: state.gcal.token });
+  // Restore token only if not expired
+  if (state.gcal.token && state.gcal.tokenExpiry && Date.now() < state.gcal.tokenExpiry) {
+    gapi.client.setToken({ access_token: state.gcal.token });
+  } else if (state.gcal.token) {
+    // Token expired — clear it
+    state.gcal.token = null;
+    state.gcal.connected = false;
+    state.gcal.tokenExpiry = null;
+    saveState(); updateGcalBadge();
+  }
 }
 
 function connectGcal() {
   if (!state.gcal.clientId) { showToast('Configure o Client ID primeiro.', 'error'); return; }
-  if (!tokenClient) { loadGoogleAPIs(); setTimeout(connectGcal, 2500); return; }
-  tokenClient.requestAccessToken({ prompt: '' });
+  if (!tokenClient) {
+    showToast('Carregando APIs...', 'success');
+    loadGoogleAPIs();
+    setTimeout(connectGcal, 3000);
+    return;
+  }
+  // Always prompt to ensure popup appears
+  tokenClient.requestAccessToken({ prompt: 'select_account' });
 }
 
 function disconnectGcal() {
-  state.gcal.connected = false; state.gcal.token = null;
-  saveState(); updateGcalBadge(); showToast('Desconectado.');
+  if (state.gcal.token) {
+    try { google.accounts.oauth2.revoke(state.gcal.token); } catch(e) {}
+  }
+  state.gcal.connected = false; state.gcal.token = null; state.gcal.tokenExpiry = null;
+  saveState(); updateGcalBadge();
+  if (typeof renderGcalArea === 'function') renderGcalArea();
+  showToast('Desconectado.');
 }
 
 function updateGcalBadge() {
