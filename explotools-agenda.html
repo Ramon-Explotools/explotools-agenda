@@ -256,16 +256,40 @@ header::after{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;ba
 .cal-week-body:hover{background:var(--surface2);}
 
 /* DAILY VIEW */
-.cal-daily{padding:20px;}
-.cal-daily-title{font-family:'Rajdhani',sans-serif;font-size:16px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--text2);margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border);}
-.cal-daily-task{background:var(--surface);border:1px solid var(--border);border-left:3px solid transparent;border-radius:5px;padding:12px 14px;margin-bottom:8px;cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:12px;}
-.cal-daily-task:hover{border-color:var(--border2);transform:translateX(2px);}
-.cal-daily-time{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text3);min-width:42px;}
-.cal-daily-info{flex:1;}
-.cal-daily-name{font-size:13px;font-weight:500;margin-bottom:3px;}
-.cal-daily-empty{text-align:center;color:var(--text3);font-size:13px;padding:40px 0;}
-.cal-add-btn{display:flex;align-items:center;justify-content:center;gap:6px;padding:10px;border:1px dashed var(--border2);border-radius:4px;background:none;color:var(--text3);font-size:12px;cursor:pointer;width:100%;margin-top:8px;font-family:'Inter',sans-serif;transition:all .15s;}
-.cal-add-btn:hover{border-color:var(--red);color:var(--red2);background:var(--red4);}
+.cal-daily{display:flex;flex-direction:column;height:100%;}
+.cal-daily-hd{padding:14px 20px 10px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+.cal-daily-title{font-family:'Rajdhani',sans-serif;font-size:16px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text2);}
+.cal-daily-body{flex:1;overflow-y:auto;display:flex;flex-direction:column;}
+
+/* All-day strip */
+.cal-allday{border-bottom:2px solid var(--border2);background:var(--surface2);padding:8px 0 8px 56px;min-height:36px;position:relative;flex-shrink:0;}
+.cal-allday-label{position:absolute;left:0;top:8px;width:52px;font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);text-align:right;padding-right:10px;}
+.cal-allday-tasks{display:flex;flex-wrap:wrap;gap:4px;padding-right:12px;}
+.cal-allday-chip{font-size:10px;padding:3px 8px;border-radius:3px;cursor:pointer;display:flex;align-items:center;gap:5px;border-left:3px solid transparent;background:var(--surface);border-top:1px solid var(--border);border-right:1px solid var(--border);border-bottom:1px solid var(--border);transition:all .15s;max-width:220px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;}
+.cal-allday-chip:hover{transform:translateY(-1px);box-shadow:0 3px 10px rgba(0,0,0,.3);}
+.cal-allday-empty{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3);opacity:.5;}
+
+/* Time grid */
+.cal-timegrid{flex:1;position:relative;display:flex;flex-direction:column;}
+.cal-timegrid-scroll{flex:1;overflow-y:auto;position:relative;}
+.cal-tg-inner{position:relative;min-height:1440px;} /* 24h × 60px */
+.cal-tg-hour{position:absolute;left:0;right:0;display:flex;align-items:flex-start;}
+.cal-tg-hour-label{width:52px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text3);text-align:right;padding-right:10px;margin-top:-7px;flex-shrink:0;letter-spacing:.04em;}
+.cal-tg-hour-line{flex:1;border-top:1px solid var(--border);position:relative;}
+.cal-tg-halfline{position:absolute;top:30px;left:0;right:0;border-top:1px dashed var(--border);opacity:.4;}
+.cal-tg-event{position:absolute;left:4px;right:4px;border-radius:4px;padding:4px 8px;cursor:pointer;overflow:hidden;border-left:3px solid transparent;transition:all .15s;min-height:22px;display:flex;flex-direction:column;justify-content:center;z-index:1;}
+.cal-tg-event:hover{filter:brightness(1.15);transform:translateX(2px);z-index:2;}
+.cal-tg-event-title{font-size:11px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3;}
+.cal-tg-event-meta{font-family:'JetBrains Mono',monospace;font-size:9px;opacity:.7;margin-top:1px;}
+.cal-tg-event-badge{position:absolute;top:3px;right:4px;width:12px;height:12px;border-radius:50%;background:var(--red);color:#fff;font-size:7px;font-weight:700;display:flex;align-items:center;justify-content:center;}
+
+/* Now line */
+.cal-now-line{position:absolute;left:52px;right:0;height:2px;background:var(--red);z-index:3;pointer-events:none;}
+.cal-now-dot{position:absolute;left:-5px;top:-4px;width:10px;height:10px;border-radius:50%;background:var(--red);}
+
+/* Hour click zone */
+.cal-tg-click{position:absolute;left:52px;right:0;cursor:pointer;opacity:0;transition:opacity .12s;}
+.cal-tg-click:hover{opacity:1;background:rgba(232,0,13,.04);border-radius:2px;}
 
 /* DASHBOARD */
 .dash{display:flex;flex-direction:column;gap:24px;}
@@ -1805,42 +1829,171 @@ function renderCalendarDaily(d) {
   var weekDays = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
   var isToday = (function() { var t=new Date(); return t.getDate()===day&&t.getMonth()===m&&t.getFullYear()===y; })();
   document.getElementById('calTitle').textContent = weekDays[d.getDay()] + ', ' + day + ' de ' + MONTHS[m];
+
   var body = document.getElementById('calBody');
   var ds = fmtDateVal(d);
-  var tasks = getCalFiltered().filter(function(t) {
+
+  // Separate tasks: with time vs all-day
+  var allTasks = getCalFiltered().filter(function(t) {
     if (!t.date) return false;
     var td = new Date(t.date);
     return td.getDate()===day && td.getMonth()===m && td.getFullYear()===y;
   });
-  tasks.sort(function(a,b) { return (a.date||'') > (b.date||'') ? 1 : -1; });
-  var html = '<div class="cal-daily">';
-  html += '<div class="cal-daily-title">' + (isToday ? '— Hoje —' : day + ' de ' + MONTHS[m] + ' de ' + y) + '</div>';
-  if (tasks.length === 0) {
-    html += '<div class="cal-daily-empty">Nenhuma tarefa para este dia.</div>';
+  var timedTasks  = allTasks.filter(function(t) { return t.date && t.date.includes('T'); });
+  var allDayTasks = allTasks.filter(function(t) { return !t.date || !t.date.includes('T'); });
+  // Also include tasks with no date at all that are in state (day-only)
+  timedTasks.sort(function(a,b) { return a.date > b.date ? 1 : -1; });
+
+  var now = new Date();
+  var PX_PER_MIN = 1; // 60px per hour = 1px per min
+  var HOUR_H = 60;
+  var START_H = 6; // show from 06:00
+  var END_H   = 23; // to 23:00
+  var TOTAL_H = END_H - START_H;
+
+  // Build wrapper
+  var wrap = document.createElement('div');
+  wrap.className = 'cal-daily';
+
+  // ── Header ──
+  var hd = document.createElement('div');
+  hd.className = 'cal-daily-hd';
+  hd.innerHTML =
+    '<div class="cal-daily-title">' + (isToday ? '— Hoje —' : weekDays[d.getDay()] + ', ' + day + ' de ' + MONTHS[m]) + '</div>' +
+    '<button class="cal-add-btn" style="width:auto;margin:0;padding:6px 12px;" onclick="openNewTask(\'todo\',\''+ds+'T09:00\')">' +
+      '<svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>' +
+      'Nova tarefa' +
+    '</button>';
+  wrap.appendChild(hd);
+
+  var bodyEl = document.createElement('div');
+  bodyEl.className = 'cal-daily-body';
+
+  // ── All-day section ──
+  var allDay = document.createElement('div');
+  allDay.className = 'cal-allday';
+  allDay.innerHTML = '<div class="cal-allday-label">Sem<br>hora</div>';
+  var allDayTasksEl = document.createElement('div');
+  allDayTasksEl.className = 'cal-allday-tasks';
+  if (allDayTasks.length === 0) {
+    allDayTasksEl.innerHTML = '<span class="cal-allday-empty">Nenhuma</span>';
   } else {
-    tasks.forEach(function(t) {
+    allDayTasks.forEach(function(t) {
       var sc = STATUS_COLORS[t.status] || '#5a6080';
-      var s = state.sectors.find(function(s){return s.id===t.sector;});
-      var timeStr = t.date && t.date.includes('T') ? t.date.slice(11,16) : '';
-      var isOverdueD = t.date && new Date(t.date) < new Date() && t.status !== 'done';
-      html += '<div class="cal-daily-task" data-id="'+t.id+'" style="border-left-color:'+sc+'">' +
-        '<div class="cal-daily-time" style="color:'+sc+'">' + timeStr + '</div>' +
-        '<div class="cal-daily-info">' +
-          '<div class="cal-daily-name">'+esc(t.title)+(isOverdueD ? ' <span style="display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;background:var(--red);color:#fff;font-size:9px;font-weight:700;vertical-align:middle;margin-left:4px">!</span>' : '')+'</div>' +
-          '<span class="tag" style="color:'+sc+';background:'+sc+'18">' + COLS.find(function(c){return c.id===t.status;}).label + '</span>' +
-        '</div>' +
-        (s ? '<div class="cal-daily-sector-dot" style="background:'+s.color+'" title="'+esc(s.name)+'"></div>' : '') +
-      '</div>';
+      var s  = state.sectors.find(function(s){return s.id===t.sector;});
+      var isOv = t.date && new Date(t.date) < now && t.status !== 'done';
+      var chip = document.createElement('div');
+      chip.className = 'cal-allday-chip';
+      chip.style.borderLeftColor = sc;
+      chip.style.color = sc;
+      chip.innerHTML =
+        esc(t.title) +
+        (s ? '<span style="width:6px;height:6px;border-radius:50%;background:'+s.color+';flex-shrink:0;display:inline-block"></span>' : '') +
+        (isOv ? '<span style="width:12px;height:12px;border-radius:50%;background:var(--red);color:#fff;font-size:7px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0">!</span>' : '');
+      chip.addEventListener('click', function() { openEditTask(t.id); });
+      allDayTasksEl.appendChild(chip);
     });
   }
-  html += '<button class="cal-add-btn" onclick="openNewTask(\'todo\',\''+ds+'T09:00\')">' +
-    '<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>' +
-    'Adicionar tarefa neste dia</button>';
-  html += '</div>';
-  body.innerHTML = html;
-  body.querySelectorAll('.cal-daily-task').forEach(function(el) {
-    el.addEventListener('click', function() { openEditTask(this.dataset.id); });
+  allDay.appendChild(allDayTasksEl);
+  bodyEl.appendChild(allDay);
+
+  // ── Time grid ──
+  var tgWrap = document.createElement('div');
+  tgWrap.className = 'cal-timegrid';
+  var tgScroll = document.createElement('div');
+  tgScroll.className = 'cal-timegrid-scroll';
+  var tgInner = document.createElement('div');
+  tgInner.className = 'cal-tg-inner';
+  tgInner.style.height = (TOTAL_H * HOUR_H) + 'px';
+
+  // Draw hour rows
+  for (var h = START_H; h <= END_H; h++) {
+    var row = document.createElement('div');
+    row.className = 'cal-tg-hour';
+    row.style.top = ((h - START_H) * HOUR_H) + 'px';
+    row.style.position = 'absolute';
+    row.style.left = '0';
+    row.style.right = '0';
+    row.style.height = HOUR_H + 'px';
+    var lbl = String(h).padStart(2,'0') + ':00';
+    row.innerHTML =
+      '<div class="cal-tg-hour-label">' + lbl + '</div>' +
+      '<div class="cal-tg-hour-line"><div class="cal-tg-halfline"></div></div>';
+    // Click zone for adding task at this hour
+    (function(hh) {
+      row.querySelector('.cal-tg-hour-line').addEventListener('click', function(e) {
+        var rect = this.getBoundingClientRect();
+        var relY = e.clientY - rect.top;
+        var mins = Math.floor(relY / PX_PER_MIN);
+        var slotMins = Math.round(mins / 15) * 15;
+        var hStr = String(hh).padStart(2,'0') + ':' + String(slotMins).padStart(2,'0');
+        openNewTask('todo', ds + 'T' + hStr);
+      });
+    })(h);
+    tgInner.appendChild(row);
+  }
+
+  // Draw timed task events
+  timedTasks.forEach(function(t) {
+    var sc = STATUS_COLORS[t.status] || '#5a6080';
+    var s  = state.sectors.find(function(s){return s.id===t.sector;});
+    var timeStr = t.date.slice(11,16);
+    var parts = timeStr.split(':');
+    var hh = parseInt(parts[0],10), mm = parseInt(parts[1],10);
+    var topPx = ((hh - START_H) * HOUR_H) + (mm * PX_PER_MIN);
+    if (topPx < 0) topPx = 0;
+    var isOv = new Date(t.date) < now && t.status !== 'done';
+
+    var ev = document.createElement('div');
+    ev.className = 'cal-tg-event';
+    ev.style.top = topPx + 'px';
+    ev.style.left = '60px';
+    ev.style.right = '8px';
+    ev.style.height = Math.max(22, HOUR_H - 4) + 'px';
+    ev.style.background = sc + '22';
+    ev.style.borderLeftColor = sc;
+    ev.style.color = sc;
+    ev.innerHTML =
+      '<div class="cal-tg-event-title">' + esc(t.title) + '</div>' +
+      '<div class="cal-tg-event-meta">' + timeStr + (s ? ' · ' + esc(s.name) : '') + '</div>' +
+      (isOv ? '<div class="cal-tg-event-badge">!</div>' : '');
+    ev.addEventListener('click', function() { openEditTask(t.id); });
+    tgInner.appendChild(ev);
   });
+
+  // Draw "now" line if today
+  if (isToday) {
+    var nowH = now.getHours(), nowM = now.getMinutes();
+    var nowTop = ((nowH - START_H) * HOUR_H) + (nowM * PX_PER_MIN);
+    if (nowTop >= 0 && nowTop <= TOTAL_H * HOUR_H) {
+      var nowLine = document.createElement('div');
+      nowLine.className = 'cal-now-line';
+      nowLine.style.top = nowTop + 'px';
+      nowLine.innerHTML = '<div class="cal-now-dot"></div>';
+      tgInner.appendChild(nowLine);
+    }
+  }
+
+  tgScroll.appendChild(tgInner);
+  tgWrap.appendChild(tgScroll);
+  bodyEl.appendChild(tgWrap);
+  wrap.appendChild(bodyEl);
+  body.innerHTML = '';
+  body.appendChild(wrap);
+
+  // Auto-scroll to current time (or 8am)
+  if (isToday) {
+    var scrollTo = ((now.getHours() - START_H - 1) * HOUR_H);
+    tgScroll.scrollTop = Math.max(0, scrollTo);
+  } else {
+    tgScroll.scrollTop = (8 - START_H) * HOUR_H;
+  }
+
+  // Set calBody height so it fills properly
+  body.style.overflow = 'hidden';
+  body.style.display = 'flex';
+  body.style.flexDirection = 'column';
+  body.style.height = 'calc(100vh - 280px)';
 }
 
 function fmtDateVal(d) {
