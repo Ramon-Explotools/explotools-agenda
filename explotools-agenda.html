@@ -1228,13 +1228,12 @@ function syncTasksFromGoogle() {
             var status = statusMap[gt.status] || 'todo';
             var dateStr = '';
             if (gt.due) {
-              try {
-                var d = new Date(gt.due);
-                dateStr = d.getFullYear() + '-' +
-                  String(d.getMonth()+1).padStart(2,'0') + '-' +
-                  String(d.getDate()).padStart(2,'0');
-              } catch(e) {}
+              // Google Tasks due is always midnight UTC: "2026-03-16T00:00:00.000Z"
+              // Slice the date part directly — never convert to local time
+              // or it shifts to previous day in UTC-3
+              dateStr = gt.due.slice(0, 10); // "2026-03-16"
             }
+
             var title = gt.title.trim();
             var notes = gt.notes || '';
 
@@ -1242,7 +1241,8 @@ function syncTasksFromGoogle() {
               var changed = false;
               if (existing.title !== title) { existing.title = title; changed = true; }
               if (existing.status !== status) { existing.status = status; changed = true; }
-              if (dateStr && existing.date !== dateStr) { existing.date = dateStr; changed = true; }
+              // Always re-apply correct date (fixes previously wrong dates)
+              if (existing.date !== dateStr) { existing.date = dateStr; changed = true; }
               if (changed) updated++;
             } else {
               state.tasks.push({
