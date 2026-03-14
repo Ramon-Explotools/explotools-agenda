@@ -967,7 +967,12 @@ function loadGoogleAPIs() {
   s1.src = 'https://apis.google.com/js/api.js';
   s1.onload = function() {
     gapi.load('client', function() {
-      gapi.client.init({ discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest'] }).then(function() {
+      gapi.client.init({
+        discoveryDocs: [
+          'https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest',
+          'https://www.googleapis.com/discovery/v1/apis/tasks/v1/rest'
+        ]
+      }).then(function() {
         gapiReady = true;
         if (gisReady) initGIS();
       }).catch(function() { gapiReady = true; if (gisReady) initGIS(); });
@@ -983,7 +988,10 @@ function loadGoogleAPIs() {
 function initGIS() {
   tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: state.gcal.clientId,
-    scope: 'https://www.googleapis.com/auth/calendar',
+    scope: [
+      'https://www.googleapis.com/auth/calendar',
+      'https://www.googleapis.com/auth/tasks'
+    ].join(' '),
     callback: function(r) {
       if (r.error) {
         showToast('Erro OAuth: ' + r.error, 'error');
@@ -993,11 +1001,12 @@ function initGIS() {
       }
       state.gcal.connected = true;
       state.gcal.token = r.access_token;
-      state.gcal.tokenExpiry = Date.now() + 3500 * 1000; // ~58 min
+      state.gcal.tokenExpiry = Date.now() + 3500 * 1000;
       saveState(); updateGcalBadge();
       if (typeof renderGcalArea === 'function') renderGcalArea();
       showToast('Google Agenda conectado!', 'success');
       syncFromGcal();
+      syncTasksFromGoogle();
       startAutoSync();
     }
   });
@@ -1005,8 +1014,7 @@ function initGIS() {
   if (state.gcal.token && state.gcal.tokenExpiry && Date.now() < state.gcal.tokenExpiry) {
     gapi.client.setToken({ access_token: state.gcal.token });
     startAutoSync();
-    // Sync on load to catch any new GCal events
-    setTimeout(syncFromGcal, 1000);
+    setTimeout(function() { syncFromGcal(); syncTasksFromGoogle(); }, 1000);
   } else if (state.gcal.token) {
     state.gcal.token = null;
     state.gcal.connected = false;
@@ -1094,7 +1102,10 @@ var _syncInterval = null;
 function startAutoSync() {
   if (_syncInterval) clearInterval(_syncInterval);
   _syncInterval = setInterval(function() {
-    if (state.gcal.connected && gapiReady) syncFromGcal();
+    if (state.gcal.connected && gapiReady) {
+      syncFromGcal();
+      syncTasksFromGoogle();
+    }
   }, 5 * 60 * 1000);
 }
 
@@ -1136,6 +1147,94 @@ function deleteFromGcal(gcalId, onDone) {
       // 410 = already deleted, treat as success
       if (e.status === 410 || e.status === 404) { if (onDone) onDone(); return; }
       showToast('Erro ao remover do Google Agenda.', 'error'); if (onDone) onDone();
+    });
+}
+
+function syncTasksFromGoogle() {
+  if (!state.gcal.connected || !gapiReady) return;
+  if (!gapi.client.tasks) { console.warn('Tasks API not ready'); return; }
+
+  // Status map: Google Tasks needsAction → todo, completed → done
+  var statusMap = { needsAction: 'todo', completed: 'done' };
+
+  // First get all task lists
+  gapi.client.tasks.tasklists.list({ maxResults: 20 })
+    .then(function(r) {
+      var lists = r.result.items || [];
+      if (!lists.length) return;
+
+      var allPromises = lists.map(function(list) {
+        return gapi.client.tasks.tasks.list({
+          tasklist: list.id,
+          showCompleted: true,
+          showHidden: true,
+          maxResults: 100
+        }).then(function(res) {
+          return { listName: list.title, items: res.result.items || [] };
+        });
+      });
+
+      Promise.all(allPromises).then(function(results) {
+        var added = 0, updated = 0;
+        results.forEach(function(result) {
+          result.items.forEach(function(gt) {
+            // Use a stable ID based on Google Task ID
+            var gtaskId = 'gtask_' + gt.id;
+            var existing = state.tasks.find(function(t) { return t.gcalTaskId === gt.id; });
+            var status = statusMap[gt.status] || 'todo';
+            // Parse due date — Google Tasks due is date-only (no time)
+            var dateStr = '';
+            if (gt.due) {
+              var d = new Date(gt.due);
+              // Keep as date-only (no T time part) since Google Tasks has no time
+              dateStr = d.getFullYear() + '-' +
+                String(d.getMonth()+1).padStart(2,'0') + '-' +
+                String(d.getDate()).padStart(2,'0');
+            }
+            var title = gt.title || '(sem título)';
+            var notes = gt.notes || '';
+
+            if (existing) {
+              // Update if changed
+              var changed = false;
+              if (existing.title !== title) { existing.title = title; changed = true; }
+              if (existing.status !== status) { existing.status = status; changed = true; }
+              if (dateStr && existing.date !== dateStr) { existing.date = dateStr; changed = true; }
+              if (changed) updated++;
+            } else {
+              // Import new task
+              state.tasks.push({
+                id: gtaskId,
+                gcalTaskId: gt.id,      // Google Task ID for future updates
+                gcalId: null,           // not a calendar event
+                title: title,
+                desc: notes,
+                sector: '', project: '',
+                status: status,
+                date: dateStr,
+                recur: '', recurEnd: '',
+                createdAt: new Date().toISOString(),
+                _sourceList: result.listName  // store list name for reference
+              });
+              added++;
+            }
+          });
+        });
+
+        if (added > 0 || updated > 0) {
+          saveState(); renderAll();
+          var msg = [];
+          if (added)   msg.push(added   + ' tarefa' + (added>1?'s':'') + ' importada' + (added>1?'s':''));
+          if (updated) msg.push(updated + ' tarefa' + (updated>1?'s':'') + ' atualizada' + (updated>1?'s':''));
+          showToast(msg.join(', ') + ' do Google Tarefas ✓', 'success');
+        } else {
+          showToast('Tarefas Google já sincronizadas ✓', 'success');
+        }
+      });
+    })
+    .catch(function(e) {
+      console.warn('Erro ao sincronizar tarefas Google:', e);
+      showToast('Erro ao importar tarefas Google.', 'error');
     });
 }
 
@@ -2734,7 +2833,8 @@ function renderGcalArea() {
       '<div class="connected-badge"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Google Agenda conectado</div>' +
       '<div style="display:flex;gap:8px;margin-top:10px;">' +
         '<button class="btn btn-ghost" style="font-size:12px;color:var(--red2)" onclick="disconnectGcal()">Desconectar</button>' +
-        '<button class="btn btn-ghost" onclick="syncFromGcal()" style="font-size:12px">&#8635; Sincronizar</button>' +
+        '<button class="btn btn-ghost" onclick="syncFromGcal()" style="font-size:12px">&#8635; Eventos</button>' +
+        '<button class="btn btn-ghost" onclick="syncTasksFromGoogle()" style="font-size:12px">&#8635; Tarefas</button>' +
       '</div>';
     return;
   }
