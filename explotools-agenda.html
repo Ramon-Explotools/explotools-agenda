@@ -2068,7 +2068,8 @@ function renderDashboard() {
   var el = document.getElementById('dashboardView');
   el.innerHTML = '';
   var now = new Date();
-  var tasks = state.tasks;
+  var tasks = getFiltered(); // respect active filters
+  var allTasks = state.tasks; // full set for project/sector counts
   var total = tasks.length;
   var byStatus = { todo: 0, doing: 0, waiting: 0, done: 0 };
   var overdueTasks = [];
@@ -2086,12 +2087,19 @@ function renderDashboard() {
   var pct = total > 0 ? Math.round((byStatus.done / total) * 100) : 0;
   var activeProjs = state.projects.filter(function(p) { return !p.done; }).length;
 
+  // Show filter indicator if any filter is active
+  var f = state.filters;
+  var hasFilter = f.status !== 'all' || f.sector || f.project || f.overdue || f.dateRange;
+
   var dash = document.createElement('div');
   dash.className = 'dash';
 
   // ── KPI SECTION ──
   var kpiSection = document.createElement('div');
-  kpiSection.innerHTML = '<div class="dash-section-title">Visão Geral</div>';
+  var filterNote = hasFilter
+    ? ' <span style="font-family:JetBrains Mono,monospace;font-size:9px;color:var(--red2);background:rgba(232,0,13,.1);padding:2px 8px;border-radius:10px;letter-spacing:.04em;vertical-align:middle">filtro ativo</span>'
+    : '';
+  kpiSection.innerHTML = '<div class="dash-section-title">Visão Geral' + filterNote + '</div>';
   var kpiGrid = document.createElement('div');
   kpiGrid.className = 'kpi-grid';
 
