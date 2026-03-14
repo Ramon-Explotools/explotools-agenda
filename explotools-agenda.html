@@ -1074,17 +1074,27 @@ function syncFromGcal() {
     var added = 0, updated = 0;
     (r.result.items || []).forEach(function(ev) {
       var existing = state.tasks.find(function(t) { return t.gcalId === ev.id; });
-      var start = ev.start && (ev.start.dateTime || ev.start.date);
-      var dateStr = start ? new Date(start).toISOString().slice(0,16) : '';
+
+      // Preserve local date/time — avoid UTC conversion which shifts dates
+      var dateStr = '';
+      if (ev.start) {
+        if (ev.start.dateTime) {
+          // dateTime has timezone offset e.g. "2026-03-14T09:00:00-03:00"
+          // Slice to get "YYYY-MM-DDTHH:MM" in LOCAL time (drop offset)
+          dateStr = ev.start.dateTime.slice(0, 16);
+        } else if (ev.start.date) {
+          // All-day event: "2026-03-14" — use as-is, no time
+          dateStr = ev.start.date;
+        }
+      }
+
       var title = ev.summary || '(sem título)';
       if (existing) {
-        // Update title and date if changed in GCal
         var changed = false;
         if (existing.title !== title) { existing.title = title; changed = true; }
         if (existing.date !== dateStr) { existing.date = dateStr; changed = true; }
         if (changed) updated++;
       } else {
-        // New event from GCal — import it
         state.tasks.push({
           id: 'gcal_' + ev.id, gcalId: ev.id,
           title: title, desc: ev.description || '',
@@ -1119,11 +1129,18 @@ function pushToGcal(task) {
   if (!state.gcal.connected || !gapiReady) return;
   var ev = { summary: task.title, description: task.desc || '' };
   if (task.date) {
-    var d = new Date(task.date);
-    ev.start = { dateTime: d.toISOString(), timeZone: 'America/Sao_Paulo' };
-    ev.end   = { dateTime: new Date(d.getTime() + 3600000).toISOString(), timeZone: 'America/Sao_Paulo' };
+    if (task.date.includes('T')) {
+      // "YYYY-MM-DDTHH:MM" in local time — send directly with timezone
+      var localDT = task.date + ':00';
+      ev.start = { dateTime: localDT, timeZone: 'America/Sao_Paulo' };
+      ev.end   = { dateTime: addOneHour(localDT), timeZone: 'America/Sao_Paulo' };
+    } else {
+      // Date-only (all-day)
+      ev.start = { date: task.date };
+      ev.end   = { date: task.date };
+    }
   } else {
-    var td = new Date().toISOString().split('T')[0];
+    var td = fmtDateVal(new Date());
     ev.start = { date: td }; ev.end = { date: td };
   }
   var req = task.gcalId
@@ -1132,17 +1149,26 @@ function pushToGcal(task) {
   req.then(function(r) {
     if (!task.gcalId) {
       task.gcalId = r.result.id;
-      saveState(); // save gcalId back so future updates work
+      saveState();
     }
     showToast('Sincronizado com Google Agenda ✓', 'success');
   }).catch(function(e) {
-    // Token may have expired — clear and ask user to reconnect
     if (e.status === 401) {
       state.gcal.connected = false; state.gcal.token = null; state.gcal.tokenExpiry = null;
       saveState(); updateGcalBadge();
       showToast('Sessão expirada. Reconecte o Google Agenda nas Config.', 'error');
     }
   });
+}
+
+function addOneHour(dtStr) {
+  // dtStr: "YYYY-MM-DDTHH:MM:SS" in local time
+  var parts = dtStr.match(/(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+  if (!parts) return dtStr;
+  var h = parseInt(parts[4]) + 1;
+  var day = parts[3], month = parts[2], year = parts[1], min = parts[5];
+  if (h >= 24) { h = 0; day = String(parseInt(day)+1).padStart(2,'0'); }
+  return year + '-' + month + '-' + day + 'T' + String(h).padStart(2,'0') + ':' + min + ':00';
 }
 
 function deleteFromGcal(gcalId, onDone) {
