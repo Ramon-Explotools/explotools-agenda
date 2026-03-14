@@ -961,14 +961,13 @@ function initGIS() {
 
 function connectGcal() {
   if (!state.gcal.clientId) { showToast('Configure o Client ID primeiro.', 'error'); return; }
-  if (!tokenClient) {
-    showToast('Carregando APIs...', 'success');
-    loadGoogleAPIs();
-    setTimeout(connectGcal, 3000);
-    return;
+  if (!tokenClient) { showToast('APIs ainda carregando, tente em 3 segundos.', 'error'); return; }
+  // Direct user gesture — popup will open
+  try {
+    tokenClient.requestAccessToken({ prompt: 'select_account' });
+  } catch(e) {
+    showToast('Erro ao abrir login: ' + e.message, 'error');
   }
-  // Always prompt to ensure popup appears
-  tokenClient.requestAccessToken({ prompt: 'select_account' });
 }
 
 function disconnectGcal() {
@@ -2318,31 +2317,59 @@ function closeSettings() { document.getElementById('settingsModal').classList.re
 
 function renderGcalArea() {
   var area = document.getElementById('gcalArea');
+  if (!area) return;
   if (state.gcal.connected) {
     area.innerHTML =
       '<div class="connected-badge"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Google Agenda conectado</div>' +
-      '<button class="btn btn-ghost" style="font-size:12px;color:var(--red2)" onclick="disconnectGcal();renderGcalArea()">Desconectar</button>' +
-      '<button class="btn btn-ghost" onclick="syncFromGcal()" style="margin-left:8px;font-size:12px">&#8635; Sincronizar</button>';
+      '<div style="display:flex;gap:8px;margin-top:10px;">' +
+        '<button class="btn btn-ghost" style="font-size:12px;color:var(--red2)" onclick="disconnectGcal()">Desconectar</button>' +
+        '<button class="btn btn-ghost" onclick="syncFromGcal()" style="font-size:12px">&#8635; Sincronizar</button>' +
+      '</div>';
     return;
   }
+  var apisReady = (typeof tokenClient !== 'undefined' && tokenClient);
   area.innerHTML =
     '<div class="gcal-guide">' +
       '<p>Para sincronização bidirecional, configure um <strong>Client ID</strong> OAuth no Google Cloud:</p>' +
       '<div class="step-r"><div class="step-n">1</div><p>Acesse <a href="https://console.cloud.google.com" target="_blank">console.cloud.google.com</a> e crie um projeto.</p></div>' +
       '<div class="step-r"><div class="step-n">2</div><p>Em <em>APIs e Serviços → Biblioteca</em>, ative a <strong>Google Calendar API</strong>.</p></div>' +
-      '<div class="step-r"><div class="step-n">3</div><p>Em <em>Credenciais → Criar → ID do cliente OAuth</em>, selecione <strong>Aplicativo da Web</strong> e adicione a URL do site em "Origens JS autorizadas".</p></div>' +
+      '<div class="step-r"><div class="step-n">3</div><p>Em <em>Credenciais → Criar → ID do cliente OAuth</em>, selecione <strong>Aplicativo da Web</strong> e adicione a URL do site nas origens autorizadas.</p></div>' +
       '<div class="step-r"><div class="step-n">4</div><p>Cole o <strong>Client ID</strong> abaixo e clique em Conectar.</p></div>' +
     '</div>' +
-    '<div class="form-g" style="margin-top:14px"><label>Client ID</label><input type="text" id="gcalInput" placeholder="xxxx.apps.googleusercontent.com" value="' + esc(state.gcal.clientId) + '"></div>' +
-    '<button class="btn btn-primary" onclick="saveAndConnect()" style="margin-top:4px">Conectar</button>';
+    '<div class="form-g" style="margin-top:14px"><label>Client ID</label>' +
+      '<input type="text" id="gcalInput" placeholder="xxxx.apps.googleusercontent.com" value="' + esc(state.gcal.clientId) + '">' +
+    '</div>' +
+    '<button class="btn btn-primary" id="gcalConnectBtn" onclick="saveAndConnect()" style="margin-top:8px">' +
+      (apisReady ? 'Conectar com Google' : '⏳ Aguardando APIs...') +
+    '</button>' +
+    (!apisReady ? '<div style="font-family:JetBrains Mono,monospace;font-size:10px;color:var(--text3);margin-top:6px;">As APIs do Google estão carregando. O botão será liberado em instantes.</div>' : '');
+
+  // If APIs not ready yet, poll and re-render when ready
+  if (!apisReady) {
+    var poll = setInterval(function() {
+      if (typeof tokenClient !== 'undefined' && tokenClient) {
+        clearInterval(poll);
+        renderGcalArea(); // re-render with button enabled
+      }
+    }, 300);
+  }
 }
 
 function saveAndConnect() {
-  var cid = document.getElementById('gcalInput').value.trim();
+  var inp = document.getElementById('gcalInput');
+  var cid = inp ? inp.value.trim() : state.gcal.clientId;
   if (!cid) { showToast('Insira o Client ID.', 'error'); return; }
-  state.gcal.clientId = cid; saveState();
-  loadGoogleAPIs(); setTimeout(connectGcal, 2500);
-  showToast('Carregando APIs do Google...');
+  if (cid !== state.gcal.clientId) {
+    state.gcal.clientId = cid;
+    saveState();
+    // Re-init with new clientId
+    tokenClient = null; gapiReady = false; gisReady = false;
+    loadGoogleAPIs();
+    renderGcalArea(); // show loading state
+    return;
+  }
+  // APIs already loaded — open popup directly (must be synchronous from click)
+  connectGcal();
 }
 
 function renderSectorSettings() {
