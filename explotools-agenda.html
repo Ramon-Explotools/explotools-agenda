@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>Explotools — Central de Tarefas</title>
 <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -154,7 +157,8 @@ header::after{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;ba
 .chip:hover{border-color:var(--border3);color:var(--text2);}
 .chip.active{background:var(--red3);border-color:rgba(232,0,13,.3);color:var(--red2);}
 
-.view-wrap{flex:1;padding:24px;overflow-x:auto;animation:fadeUp .4s ease .2s both;}
+.view-wrap{flex:1;padding:24px;overflow-x:hidden;animation:fadeUp .4s ease .2s both;}
+.view-wrap.kanban-wrap{overflow-x:auto;}
 
 /* KANBAN */
 .kanban{display:flex;gap:14px;align-items:flex-start;min-height:100%;}
@@ -241,14 +245,14 @@ header::after{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;ba
 .cal-daily-sector-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;position:absolute;top:10px;right:12px;}
 
 /* WEEKLY VIEW */
-.cal-week-grid{display:grid;grid-template-columns:repeat(7,1fr);min-height:300px;}
-.cal-week-col{border-right:1px solid var(--border);display:flex;flex-direction:column;}
+.cal-week-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));min-height:300px;width:100%;}
+.cal-week-col{border-right:1px solid var(--border);display:flex;flex-direction:column;min-width:0;overflow:hidden;}
 .cal-week-col:last-child{border-right:none;}
-.cal-week-hd{padding:10px 8px;text-align:center;border-bottom:1px solid var(--border);background:var(--surface2);}
-.cal-week-dn{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.1em;color:var(--text3);text-transform:uppercase;}
-.cal-week-num{font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:700;color:var(--text2);width:30px;height:30px;display:flex;align-items:center;justify-content:center;border-radius:50%;margin:4px auto 0;}
+.cal-week-hd{padding:10px 4px;text-align:center;border-bottom:1px solid var(--border);background:var(--surface2);}
+.cal-week-dn{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.06em;color:var(--text3);text-transform:uppercase;}
+.cal-week-num{font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:700;color:var(--text2);width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:50%;margin:4px auto 0;}
 .cal-week-num.today{background:var(--red);color:#fff;}
-.cal-week-body{flex:1;padding:6px;cursor:pointer;min-height:120px;}
+.cal-week-body{flex:1;padding:4px;cursor:pointer;min-height:120px;min-width:0;overflow:hidden;}
 .cal-week-body:hover{background:var(--surface2);}
 
 /* DAILY VIEW */
@@ -1035,13 +1039,16 @@ if (state.gcal.clientId) loadGoogleAPIs();
 function switchView(v) {
   state.view = v;
   ['kanban','calendar','list','dashboard'].forEach(function(n) {
-    var vb = document.getElementById('vbtn-' + n);
-    var vw = document.getElementById(n + 'View');
+    var vb  = document.getElementById('vbtn-' + n);
+    var vw  = document.getElementById(n + 'View');
     var mvb = document.getElementById('mvbtn-' + n);
     if (vb)  vb.classList.toggle('active', n === v);
     if (vw)  vw.classList.toggle('hidden', n !== v);
     if (mvb) mvb.classList.toggle('active', n === v);
   });
+  // Kanban needs horizontal scroll; other views don't
+  var wrap = document.querySelector('.view-wrap');
+  if (wrap) wrap.classList.toggle('kanban-wrap', v === 'kanban');
   var titles = { kanban: 'Kanban', calendar: 'Calendário', list: 'Lista', dashboard: 'Dashboard' };
   document.getElementById('pageTitle').textContent = titles[v] || v;
   renderCurrentView();
